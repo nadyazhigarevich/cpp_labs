@@ -2,6 +2,10 @@
 
 std::shared_ptr<spdlog::logger> logger = spdlog::stdout_color_mt("console_logger");
 
+void initLogger() {
+    spdlog::set_pattern("[%Y-%m-%d] [%^%l%$] %v");
+}
+
 class CashRegister {
 private:
     int id;
@@ -9,13 +13,15 @@ private:
     std::mutex mutex;
     std::condition_variable cv;
     std::atomic<bool> active;
+    bool busy;
 
 public:
-    CashRegister(int id) : id(id), active(true) {}
+    CashRegister(int id) : id(id), active(true), busy(false) {}
 
     void serveCustomer(int customerId) {
         {
             std::lock_guard<std::mutex> lock(mutex);
+            busy = true;
             logger->info("Cash Register {} is serving Customer {}", id, customerId);
         }
 
@@ -24,6 +30,7 @@ public:
 
         {
             std::lock_guard<std::mutex> lock(mutex);
+            busy = false;
             logger->info("Customer {} is done at Cash Register {}", customerId, id);
         }
     }
@@ -31,6 +38,11 @@ public:
     void addCustomer(int customerId) {
         {
             std::lock_guard<std::mutex> lock(mutex);
+            if (busy) {
+                logger->warn("Cash Register {} is busy, Customer {} cannot be added", id, customerId);
+                return;
+            }
+            logger->info("Customer {} is added to Cash Register {}", customerId, id);
             queue.push(customerId);
         }
         cv.notify_one();
@@ -105,6 +117,8 @@ public:
 };
 
 int main() {
+    initLogger();
+
     const int numCustomers = 20;
     const int numRegisters = 5;
     Restaurant restaurant(numRegisters);
